@@ -111,6 +111,11 @@ sub set_description {
   $self->{"DESCRIPTION"} = $description;
 }
 
+sub description {
+  my $self = shift;
+  return $self->{"DESCRIPTION"};
+}
+
 ######################################################################
 
 
@@ -206,8 +211,12 @@ sub csvformat {
     my $threshold = $msgcondition->threshold();
     my $outtext = $msgcondition->generated_message_text();
     my $severity = $msgcondition->generated_message_severity();
+    die unless defined $description;
+    die unless defined $threshold;
+    $outtext = "(Default monitor message)" unless defined $outtext;
+    die unless defined $severity;
     print "\t"x$indent;
-    print "$description\t$match_text\t$outtext\t$severity\n";
+    print "$description\t$threshold\t$outtext\t$severity\n";
   }
 }
 
@@ -285,7 +294,7 @@ sub csvformat {
     next if $template_type eq 'TEMPLATE_GROUP'; # do them last
     foreach $template_name (@{$self->{'members'}->{$template_type}}) {
       $subtemplate = $parent->get_template($template_type,$template_name);
-      print "\t"x($index+1);
+      print "\t"x($indent+1);
       print " $template_type template $template_name\n";
       $subtemplate->csvformat($indent+1);
     }
