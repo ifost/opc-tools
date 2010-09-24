@@ -14,13 +14,105 @@ my $version = '$Id: OpcConfig.pm 1467 2010-09-24 01:40:02Z gregb $';
 
 sub version { return $version; }
 
+=head2 new()
+
+Constructor for a new template. Doesn't require arguments.
+
+=cut
+
 sub new {
   my $class = shift;
   my $self = {};
   bless $self;
 }
 
-=head2 read_file
+
+=head2 make_template($name,$type)
+
+C<$name> is just the name of the template.
+
+C<$type> can be one of:
+
+=over
+
+=item OPCMSG
+
+=item LOGFILE
+
+=item MONITOR
+
+=item TEMPLATE_GROUP
+
+=item ECS
+
+=item SCHEDULE
+
+=item SNMP
+
+=back
+
+=cut
+
+use OpcConfig::Template;
+
+sub make_template {
+  my $name = shift;
+  my $type = shift;
+  return new OpcConfig::Template::OpcmsgTemplate($name) if $type eq 'OPCMSG';
+  return new OpcConfig::Template::LogfileTemplate($name) if $type eq 'LOGFILE';
+  return new OpcConfig::Template::MonitorTemplate($name) if $type eq 'MONITOR';
+  return new OpcConfig::Template::TemplateGroup($name) if $type eq 'TEMPLATE_GROUP';
+  return new OpcConfig::Template::ECSTemplate($name) if $type eq 'ECS';
+  return new OpcConfig::Template::ScheduleTemplate($name) if $type eq 'SCHEDULE';
+  return new OpcConfig::Template::SnmpTrapTemplate($name) if $type eq 'SNMP';
+  die "Unknown template type $type";
+}
+
+
+=head2 $opcconfig_obj->read_dir($dirname)
+
+Reads through all .dat files below the directory name, skipping .svn directories.
+
+=cut
+
+sub read_dir {
+  my $self = shift;
+  my $dirname = shift;
+  if (-f $dirname and $dirname =~ /\.dat$/) {
+    #print STDERR "$dirname\n";
+    $self->read_file($dirname);
+    return;
+  }
+  if (-f $dirname) { return; }
+  my $dirhandle;
+  opendir($dirhandle,$dirname) || die "Can't read $dirname";
+  my @entries = readdir($dirhandle);
+  closedir($dirhandle);
+  my $dir;
+  foreach $dir (@entries) {
+    next if $dir =~ /^\.$/;
+    next if $dir =~ /^\.\.$/;
+    next if $dir =~ /^\.svn$/;
+    $self->read_dir($dirname."/".$dir);
+  }
+}
+
+
+=head2 line_complete($line)
+
+Does this line have an odd number of non-backslashed " characters in it?
+
+=cut
+
+sub line_complete {
+  my $line = shift;
+  $line =~ s/\\\\//g; # Get rid of \\, because they are requesting an ordinary character
+  $line =~ s/\\"//g; # Get rid of \", because they are ordinary characters
+  $line =~ tr/"//cd; # Get rid of everything but "
+  return length($line) % 2 == 0;
+}
+
+=head2 $opcconfig_obj->read_file($filename)
 
 This method reads one of the .dat files you get in the output directory
 of C<opccfgdwn>.
@@ -52,27 +144,10 @@ sub read_file {
 
     # (?<!\\)" means any " which is not part of \"
 
-    if ($workspace =~ /(?<!\\)"/) {
-      my $temp_workspace = " $workspace"; # so that a leading quote is not at the line beginning
-      $temp_workspace =~ s/(?<!\\)""//g;  # get rid of "" because it's too confusing and difficult
-      my @quote_count = split(/(?<!\\)"/,$temp_workspace);
-      if ($temp_workspace =~ /(?<!\\)"$/) {
-	push(@quote_count,"");
-      }
-      my $number_of_quotes = $#quote_count;
-      if ($number_of_quotes % 2 == 1) {
-	#line incomplete
-	#print STDERR "$workspace is incomplete because $#quote_count : ";
-	#print STDERR join(" **\"** ",@quote_count);
-	#print STDERR "\n";
-	$pre_workspace = $workspace;
-	#if ($workspace !~ /HELPTEXT/) {
-	#  print STDERR "Continuing workspace $workspace because it has $number_of_quotes quote character\n";
-	#  print STDERR "And I had to add one because of a trailing quote\n" if $workspace =~ /(?<!\\)"$/;
-	#}
-	$workspace_is_continued = 1;
-	next;
-      }
+    if (!line_complete($workspace)) {
+      $pre_workspace = $workspace;
+      $workspace_is_continued = 1;
+      next;
     }
     #print STDERR "Continued workspace $workspace\n\n" if $workspace_is_continued and $workspace !~ /HELPTEXT/;
     $workspace_is_continued = 0;
@@ -89,9 +164,8 @@ sub read_file {
       next;
     }
 
-    if ($workspace =~ /^\s*MEMBER_TEMPLATE_GROUP\s*"(.*)"/) {
-      $current_template->{"MEMBER_TEMPLATE_GROUP"} = [] unless exists $current_template->{"MEMBER_TEMPLATE_GROUP"};
-      push(@{$current_template->{"MEMBER_TEMPLATE_GROUP"}},$1);
+    if ($workspace =~ /^\s*MEMBER_(\w*)\s*"(.*)"/) {
+      $current_template->store($1,$2);
       next;
     }
 
@@ -99,22 +173,30 @@ sub read_file {
       my $condition_type = $1;
       $current_template->next_condition_type($condition_type);
       $have_started_on_conditions = 1;
-      #print STDERR "Line $. $condition_type     \r";
       next;
     }
     if ($workspace =~ /(SUPP_UNM_CONDITIONS|SUPPRESSCONDITIONS|MSGCONDITIONS)/) {
       die "Error handling workspace $workspace at $.";
     }
 
-    if ($workspace =~ /^\s*DESCRIPTION\s*"(.*)"\s*$/) {
+    if ($workspace =~ /^\s*DESCRIPTION\s*"(.*)"\s*$/s) {
       if ($have_started_on_conditions) {
 	$current_condition = $current_template->add_condition($1);
       } else {
 	# Must be the description of the template
-	$current_template->{"DESCRIPTION"} = $1;
+	$current_template->set_description($1);
       }
       next;
     }
+    #die "Problem handling workspace $workspace " if ($workspace =~ /DESCRIPTION/);
+
+    if (!defined $current_condition and $workspace =~ /^\s*SET\s*$/) {
+      # Must be a schedule template
+      $current_template->start_reading_generated_message_attributes();
+      next;
+    }
+
+    #if ($workspace =~ /CONDITION_ID/) { print STDERR " --> $workspace\n"; }
 
     if ($workspace =~ /^\s*SET\s*$/) {
       $current_condition->start_reading_generated_message_attributes();
@@ -139,12 +221,19 @@ sub read_file {
       if (defined $current_condition) {
 	$current_condition->store($keyword,$answer);
       } else {
-	$current_template->{$keyword} = $answer;
+	$current_template->store($keyword,$answer);
       }
      #die "$workspace" if $answer =~ /"/ and not $answer =~ /".*"/;
     }
   }
 }
+
+
+=head2 $opcconfig_obj->print_brief_list()
+
+Just for debugging -- prints out to STDOUT all template types and names.
+
+=cut
 
 
 sub print_brief_list {
@@ -159,12 +248,26 @@ sub print_brief_list {
 }
 
 
+=head2 $objconfig_obj->get_template($template_type,$template_name)
+
+Returns one template.
+
+=cut
+
 sub get_template {
   my $self = shift;
   my $template_type = shift;
   my $template_name = shift;
   return $self->{$template_type}->{$template_name};
 }
+
+
+=head2 show_differences()
+
+This function probably doesn't work.
+
+=cut
+
 
 sub show_differences {
   my $issue_count = 1;
@@ -447,351 +550,6 @@ sub show_differences {
       }
     }
   }
-}
-
-package OpcConfig::TemplateCondition;
-
-sub snmpv2oid {
-  my $self = shift;
-  die "Attempting to display oid of ".$self->{"KIND"}." condition" 
-    unless $self->{"KIND"} eq "SNMP";
-  my $matching = $self->{"ATTRIBUTES TO MATCH"};
-  # Default to mib2 snmpTraps if enterprise is not defined.
-  my $enterprise = exists $matching->{'$e'} ? $matching->{'$e'} : ".1.3.6.1.6.3.1.1.5";
-  my $generic = $matching->{'$G'};
-  my $specific = $matching->{'$S'};
-  if (!defined $specific and $generic == 6) { $specific = "*"; }
-  die "Condition ".$self->{"DESCRIPTION"}." is missing \$G" unless defined $generic;
-  my %snmp1to2 = ( 6 => 0, 0 => 1, 1 => 2, 2 => 3, 3 => 4, 4 => 5, 5 => 6 );
-  die "Could not convert '$enterprise' '$generic' '$specific' to snmp v2" unless 
-    exists $snmp1to2{$generic};
-  my $v2;
-  if ($generic != 6) {
-    $v2 = $enterprise.".".$snmp1to2{$generic}.".".$specific;
-  } else {
-    $v2 = $enterprise.".".$snmp1to2{$generic};
-  }
-  return $v2;
-}
-
-sub description { my $self = shift; return $self->{"DESCRIPTION"}; }
-
-sub display;
-
-sub generated_message_severity { return undef; }
-
-package OpcConfig::SuppressCondition;
-use base 'OpcConfig::TemplateCondition';
-
-sub new {
-  my $class = shift;
-  my $parent = shift;
-  my $self = {};
-  my $description = shift;
-  my $kind = shift;
-  $self->{"DESCRIPTION"} = $description;
-  $self->{"ATTRIBUTES TO MATCH"} = {};
-  $self->{"KIND"} = $kind;
-  $self->{"PARENT"} = $parent;
-  bless $self,$class;
-  return $self;
-}
-
-sub display {
-  my $self = shift;
-  print " Suppress condition (".$self->{"DESCRIPTION"}."): \n";
-  my $k;
-  foreach $k (keys %$self) { print "    $k -> ".$self->{$k}."\n"; }
-}
-
-sub store {
-  my $self = shift;
-  my $k = shift;
-  my $v = shift;
-  $self->{"ATTRIBUTES TO MATCH"}->{$k} = $v;
-}
-
-package OpcConfig::SuppressUnlessCondition;
-use base 'OpcConfig::TemplateCondition';
-
-sub new {
-  my $class = shift;
-  my $parent = shift;
-  my $self = {};
-  my $description = shift;
-  my $kind = shift;
-
-  $self->{"DESCRIPTION"} = $description;
-  $self->{"ATTRIBUTES TO MATCH"} = {};
-  $self->{"KIND"} = $kind;
-  $self->{"PARENT"} = $parent;
-  bless $self,$class;
-  return $self;
-}
-
-sub display {
-  my $self = shift;
-  print " Suppress unless condition (".$self->{"DESCRIPTION"}."): \n";
-  my $k;
-  foreach $k (keys %$self) { print "    $k -> ".$self->{$k}."\n"; }
-}
-
-sub store {
-  my $self = shift;
-  my $k = shift;
-  my $v = shift;
-  $self->{"ATTRIBUTES TO MATCH"}->{$k} = $v;
-}
-
-
-package OpcConfig::MessageCondition;
-use base 'OpcConfig::TemplateCondition';
-
-sub new {
-  my $class = shift;
-  my $parent = shift;
-  my $self = {};
-  my $description = shift;
-  my $kind = shift;
-  $self->{"DESCRIPTION"} = $description;
-  $self->{"ATTRIBUTES TO MATCH"} = {};
-  $self->{"MESSAGE TO GENERATE"} = {};
-  $self->{"currently reading"} = "ATTRIBUTES TO MATCH";
-  $self->{"KIND"} = $kind;
-  $self->{"PARENT"} = $parent;
-  bless $self,$class;
-  return $self;
-}
-
-sub start_reading_generated_message_attributes {
-  my $self = shift;
-  $self->{"currently reading"} = "MESSAGE TO GENERATE";
-}
-
-
-sub display {
-  my $self = shift;
-  print " Message condition (".$self->{"DESCRIPTION"}."): \n";
-  my $k;
-  print "   When the following conditions occur: \n";
-  foreach $k (keys %{$self->{"ATTRIBUTES TO MATCH"}}) {
-    print "     $k -> ".$self->{"ATTRIBUTES TO MATCH"}->{$k}."\n";
-  }
-  print "   Generate the following message: \n";
-  foreach $k (keys %{$self->{"MESSAGE TO GENERATE"}}) {
-    print "     $k -> ".$self->{"MESSAGE TO GENERATE"}->{$k}."\n";
-  }
-}
-
-sub store {
-  my $self = shift;
-  my $k = shift;
-  my $v = shift;
-  my $which_to_set = $self->{"currently reading"};
-  $self->{$which_to_set}->{$k} = $v;
-}
-
-sub generated_message_severity {
-  my $self = shift;
-  my $msggen = $self->{"MESSAGE TO GENERATE"};
-  my $severity = $msggen->{"SEVERITY"};
-  my $parent = $self->{"PARENT"};
-  $severity = $parent->default_severity unless defined $severity;
-  $severity = "Unknown" unless defined $severity;
-  die "Weird severity in condition ".$self->description().": $severity" unless $severity =~ /Normal|Warning|Minor|Major|Critical|Unknown/i;
-  return $severity;
-}
-
-
-
-package OpcConfig::Template;
-
-sub default_severity {
-  my $self = shift;
-  return $self->{"SEVERITY"};
-}
-
-sub standard_initialisation {
-  my $self = shift;
-  $self->{"conditions"} = [];
-  $self->{"next condition type"} = undef;
-}
-
-
-sub next_condition_type {
-  my $self = shift;
-  my $condition_type = shift;
-  $self->{"next condition type"} = $condition_type;
-  die "unknown condition type $condition_type"
-    unless $condition_type =~ /^(MSGCONDITIONS|SUPP_UNM_CONDITIONS|SUPPRESSCONDITIONS)$/;
-}
-
-sub add_condition {
-  my $self = shift;
-  my $description = shift;
-  my $condition_type = $self->{"next condition type"};
-  my $t;
-  my $kind = $self->kind();
-  die unless defined $self->{"next condition type"};
-  if ($condition_type eq 'MSGCONDITIONS') { $t = new OpcConfig::MessageCondition($self,$description,$kind); }
-  elsif ($condition_type eq 'SUPP_UNM_CONDITIONS') { $t = new OpcConfig::SuppressUnlessCondition($self,$description,$kind); }
-  elsif ($condition_type eq 'SUPPRESSCONDITIONS') { $t = new OpcConfig::SuppressCondition($self,$description,$kind); }
-  else { die "unknown condition type $condition_type"; }
-  push (@{$self->{"conditions"}},$t);
-  return $t;
-}
-
-sub conditions {
-  my $self = shift;
-  return @{$self->{"conditions"}};
-}
-
-
-
-package OpcConfig::OpcmsgTemplate;
-
-use base 'OpcConfig::Template';
-
-sub new {
-  my $class = shift;
-  my $name = shift;
-  my $self = {};
-  $self->{'name'} = $name;
-  bless $self,$class;
-  $self->standard_initialisation();
-  return $self;
-}
-
-sub kind { return 'OPCMSG'; }
-
-package OpcConfig::LogfileTemplate;
-
-use base 'OpcConfig::Template';
-
-sub new {
-  my $class = shift;
-  my $name = shift;
-  my $self = {};
-  $self->{'name'} = $name;
-  bless $self,$class;
-}
-
-sub kind { return 'LOGFILE'; }
-
-
-package OpcConfig::MonitorTemplate;
-
-use base 'OpcConfig::Template';
-
-sub new {
-  my $class = shift;
-  my $name = shift;
-  my $self = {};
-  $self->{'name'} = $name;
-  bless $self,$class;
-  $self->standard_initialisation();
-  return $self;
-}
-
-sub kind { return 'MONITOR'; }
-
-package OpcConfig::TemplateGroup;
-
-sub new {
-  my $class = shift;
-  my $name = shift;
-  my $self = {};
-  $self->{'name'} = $name;
-  bless $self,$class;
-  $self->standard_initialisation();
-  return $self;
-}
-
-sub kind { return 'TEMPLATE_GROUP'; }
-
-package OpcConfig::ECSTemplate;
-
-#use base 'OpcConfig::Template';
-# Not sure about this one
-
-sub new {
-  my $class = shift;
-  my $name = shift;
-  my $self = {};
-  $self->{'name'} = $name;
-  bless $self,$class;
-}
-
-sub kind { return 'ECS'; }
-
-package OpcConfig::ScheduleTemplate;
-
-use base 'OpcConfig::Template';
-
-sub new {
-  my $class = shift;
-  my $name = shift;
-  my $self = {};
-  $self->{'name'} = $name;
-  bless $self,$class;
-  $self->standard_initialisation();
-  return $self;
-}
-
-sub kind { return 'SCHEDULE'; }
-
-package OpcConfig::SnmpTrapTemplate;
-
-use base 'OpcConfig::Template';
-
-sub new {
-  my $class = shift;
-  my $name = shift;
-  my $self = {};
-  $self->{'name'} = $name;
-  bless $self,$class;
-  $self->standard_initialisation();
-  return $self;
-
-}
-
-sub display {
-  my $self = shift;
-  my $k;
-  foreach $k (keys %$self) {
-    if ($k eq 'conditions') {
-      print "Conditions: \n";
-      my $msgcondition;
-      foreach $msgcondition (@{$self->{'conditions'}}) {
-	unless (defined $msgcondition) {
-	  print STDERR join("; ",@{$self->{'conditions'}});
-	  print "\n";
-	  die;
-	}
-	$msgcondition->display();
-      }
-    } else {
-      print "$k -> ".$self->{$k}."\n";
-    }
-  }
-}
-
-sub kind { return 'SNMP'; }
-
-
-package OpcConfig;
-
-sub make_template {
-  my $name = shift;
-  my $type = shift;
-  return new OpcConfig::OpcmsgTemplate($name) if $type eq 'OPCMSG';
-  return new OpcConfig::LogfileTemplate($name) if $type eq 'LOGFILE';
-  return new OpcConfig::MonitorTemplate($name) if $type eq 'MONITOR';
-  return new OpcConfig::TemplateGroup($name) if $type eq 'TEMPLATE_GROUP';
-  return new OpcConfig::ECSTemplate($name) if $type eq 'ECS';
-  return new OpcConfig::ScheduleTemplate($name) if $type eq 'SCHEDULE';
-  return new OpcConfig::SnmpTrapTemplate($name) if $type eq 'SNMP';
-  die "Unknown template type $type";
 }
 
 
