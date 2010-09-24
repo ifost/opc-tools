@@ -35,11 +35,16 @@ sub snmpv2oid {
   return $v2;
 }
 
+
+sub matching_text { my $self = shift; return $self->{"ATTRIBUTES TO MATCH"}->{"TEXT"}; }
+
 sub description { my $self = shift; return $self->{"DESCRIPTION"}; }
 
 sub display;
 
 sub generated_message_severity { return undef; }
+
+
 
 package OpcConfig::Template::Condition::SuppressCondition;
 use base 'OpcConfig::Template::Condition';
@@ -71,6 +76,9 @@ sub store {
   my $v = shift;
   $self->{"ATTRIBUTES TO MATCH"}->{$k} = $v;
 }
+
+sub flowcontrol { return "Suppress"; }
+
 
 package OpcConfig::Template::Condition::SuppressUnlessCondition;
 use base 'OpcConfig::Template::Condition';
@@ -104,6 +112,7 @@ sub store {
   $self->{"ATTRIBUTES TO MATCH"}->{$k} = $v;
 }
 
+sub flowcontrol { return "SuppressUnless"; }
 
 package OpcConfig::Template::Condition::MessageCondition;
 use base 'OpcConfig::Template::Condition';
@@ -180,4 +189,5 @@ sub generated_message_helptext {
   # Should check for a default in the parent
 }
 
+sub flowcontrol { return "Message"; }
 1;

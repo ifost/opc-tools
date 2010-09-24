@@ -148,6 +148,24 @@ sub new {
 
 sub kind { return 'LOGFILE'; }
 
+sub csvformat {
+  my $self = shift;
+  print "Name\tMatching text\tMessage text\tSeverity\n";
+  my $msgcondition;
+  foreach $msgcondition ($self->conditions()) {
+    my $description = $msgcondition->description();
+    my $match_text = $msgcondition->matching_text();
+    my $severity = $msgcondition->generated_message_severity();
+    print "$description\t$match_text\t";
+    if (defined $severity) {
+      my $outtext = $msgcondition->generated_message_text();
+      print "$outtext\t$severity\n";
+    } else {
+      print "\t".$msgcondition->flowcontrol()."\n";
+    }
+  }
+}
+
 
 ######################################################################
 

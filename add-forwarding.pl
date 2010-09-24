@@ -25,9 +25,9 @@ while (<TRAP_FILE>) {
     print;
     next;
   }
-  if ($do_insert and /FORMAT/) {
-    print;
+  if ($do_insert and /SDESC/) {
     print "FORWARD emc-central-nnm01\n";
+    print;
     $do_insert = 0;
     next;
   }

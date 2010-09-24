@@ -86,15 +86,9 @@ die "Usage: $0 --source=... --template-type=... --template-name=..." unless $res
 my $opcconfig = new OpcConfig();
 $opcconfig->read_dir($sourcedir);
 
-sub template2csv {
-  my $template_type = shift;
-  my $template_name = shift;
-  my $template = $opcconfig->get_template($template_type,$template_name);
-  die "Can't find a $template_type template with the name $template_name"
-    unless defined $template;
-  $template->csvformat();
-}
-
-template2csv($template_type,$template_name);
+my $template = $opcconfig->get_template($template_type,$template_name);
+die "Can't find a $template_type template with the name $template_name"
+  unless defined $template;
+$template->csvformat();
 
 
