@@ -27,7 +27,7 @@ sub snmpv2oid {
   die "Could not convert '$enterprise' '$generic' '$specific' to snmp v2" unless 
     exists $snmp1to2{$generic};
   my $v2;
-  if ($generic != 6) {
+  if ($generic == 6) {
     $v2 = $enterprise.".".$snmp1to2{$generic}.".".$specific;
   } else {
     $v2 = $enterprise.".".$snmp1to2{$generic};
