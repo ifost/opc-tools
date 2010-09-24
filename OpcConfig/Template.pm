@@ -137,6 +137,28 @@ sub new {
 
 sub kind { return 'OPCMSG'; }
 
+sub csvformat {
+  my $self = shift;
+  my $indent = shift || 0;
+  print "\t"x$indent;
+  print "Name\tMatching text\tMessage text\tSeverity\n";
+  my $msgcondition;
+  foreach $msgcondition ($self->conditions()) {
+    my $description = $msgcondition->description();
+    my $match_text = $msgcondition->matching_text() || "(non-text match conditions)";
+    my $severity = $msgcondition->generated_message_severity();
+    print "\t"x$indent;
+    print "$description\t$match_text\t";
+    if (defined $severity) {
+      my $outtext = $msgcondition->generated_message_text() || $match_text;
+      print "$outtext\t$severity\n";
+    } else {
+      print "\t".$msgcondition->flowcontrol()."\n";
+    }
+  }
+}
+
+
 
 ######################################################################
 
@@ -288,15 +310,15 @@ sub csvformat {
   my $template;
   my $subtemplate;
   my $parent = $self->{"parent"};
-  print "\t"x$indent;
-  print " -- TEMPLATE GROUP ".$self->{"name"}."\n";
+  print " "x$indent;
+  print "-- TEMPLATE GROUP ".$self->{"name"}."\n";
   foreach $template_type (keys %{$self->{'members'}}) {
     next if $template_type eq 'TEMPLATE_GROUP'; # do them last
     foreach $template_name (@{$self->{'members'}->{$template_type}}) {
       $subtemplate = $parent->get_template($template_type,$template_name);
-      print "\t"x($indent+1);
+      print " "x($indent+1);
       print " $template_type template $template_name\n";
-      $subtemplate->csvformat($indent+1);
+      $subtemplate->csvformat(1);
     }
   }
   if (exists $self->{'members'}->{'TEMPLATE_GROUP'}) {
