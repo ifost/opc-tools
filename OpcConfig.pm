@@ -27,7 +27,7 @@ sub new {
 }
 
 
-=head2 make_template($name,$type)
+=head2 $objconfig_obj->make_template($name,$type)
 
 C<$name> is just the name of the template.
 
@@ -56,15 +56,16 @@ C<$type> can be one of:
 use OpcConfig::Template;
 
 sub make_template {
+  my $self = shift;
   my $name = shift;
   my $type = shift;
-  return new OpcConfig::Template::OpcmsgTemplate($name) if $type eq 'OPCMSG';
-  return new OpcConfig::Template::LogfileTemplate($name) if $type eq 'LOGFILE';
-  return new OpcConfig::Template::MonitorTemplate($name) if $type eq 'MONITOR';
-  return new OpcConfig::Template::TemplateGroup($name) if $type eq 'TEMPLATE_GROUP';
-  return new OpcConfig::Template::ECSTemplate($name) if $type eq 'ECS';
-  return new OpcConfig::Template::ScheduleTemplate($name) if $type eq 'SCHEDULE';
-  return new OpcConfig::Template::SnmpTrapTemplate($name) if $type eq 'SNMP';
+  return new OpcConfig::Template::OpcmsgTemplate($name,$self) if $type eq 'OPCMSG';
+  return new OpcConfig::Template::LogfileTemplate($name,$self) if $type eq 'LOGFILE';
+  return new OpcConfig::Template::MonitorTemplate($name,$self) if $type eq 'MONITOR';
+  return new OpcConfig::Template::TemplateGroup($name,$self) if $type eq 'TEMPLATE_GROUP';
+  return new OpcConfig::Template::ECSTemplate($name,$self) if $type eq 'ECS';
+  return new OpcConfig::Template::ScheduleTemplate($name,$self) if $type eq 'SCHEDULE';
+  return new OpcConfig::Template::SnmpTrapTemplate($name,$self) if $type eq 'SNMP';
   die "Unknown template type $type";
 }
 
@@ -157,7 +158,7 @@ sub read_file {
       my $template_type = $1;
       my $template_name = $2;
       $self->{$template_type} = {} unless exists $self->{$template_type};
-      $current_template = make_template($template_name,$template_type);
+      $current_template = $self->make_template($template_name,$template_type);
       $current_condition = undef;
       $self->{$template_type}->{$template_name} = $current_template;
       $have_started_on_conditions = 0;
@@ -165,7 +166,7 @@ sub read_file {
     }
 
     if ($workspace =~ /^\s*MEMBER_(\w*)\s*"(.*)"/) {
-      $current_template->store($1,$2);
+      $current_template->store("MEMBER_$1",$2);
       next;
     }
 

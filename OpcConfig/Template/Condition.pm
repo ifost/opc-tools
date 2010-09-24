@@ -38,6 +38,8 @@ sub snmpv2oid {
 
 sub matching_text { my $self = shift; return $self->{"ATTRIBUTES TO MATCH"}->{"TEXT"}; }
 
+sub threshold { my $self = shift; return $self->{"ATTRIBUTES TO MATCH"}->{"THRESHOLD"}; }
+
 sub description { my $self = shift; return $self->{"DESCRIPTION"}; }
 
 sub display;

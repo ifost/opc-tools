@@ -121,8 +121,10 @@ use base 'OpcConfig::Template';
 sub new {
   my $class = shift;
   my $name = shift;
+  my $parent = shift;
   my $self = {};
   $self->{'name'} = $name;
+  $self->{'parent'} = $parent;
   bless $self,$class;
   $self->standard_initialisation();
   return $self;
@@ -141,8 +143,10 @@ use base 'OpcConfig::Template';
 sub new {
   my $class = shift;
   my $name = shift;
+  my $parent = shift;
   my $self = {};
   $self->{'name'} = $name;
+  $self->{'parent'} = $parent;
   bless $self,$class;
 }
 
@@ -150,12 +154,15 @@ sub kind { return 'LOGFILE'; }
 
 sub csvformat {
   my $self = shift;
+  my $indent = shift || 0;
+  print "\t"x$indent;
   print "Name\tMatching text\tMessage text\tSeverity\n";
   my $msgcondition;
   foreach $msgcondition ($self->conditions()) {
     my $description = $msgcondition->description();
     my $match_text = $msgcondition->matching_text();
     my $severity = $msgcondition->generated_message_severity();
+    print "\t"x$indent;
     print "$description\t$match_text\t";
     if (defined $severity) {
       my $outtext = $msgcondition->generated_message_text();
@@ -177,14 +184,33 @@ use base 'OpcConfig::Template';
 sub new {
   my $class = shift;
   my $name = shift;
+  my $parent = shift;
   my $self = {};
   $self->{'name'} = $name;
+  $self->{'parent'} = $parent;
   bless $self,$class;
   $self->standard_initialisation();
   return $self;
 }
 
 sub kind { return 'MONITOR'; }
+
+sub csvformat {
+  my $self = shift;
+  my $indent = shift || 0;
+  print "\t"x$indent;
+  print "Name\tThreshold\tAlarm text\tSeverity\n";
+  my $msgcondition;
+  foreach $msgcondition ($self->conditions()) {
+    my $description = $msgcondition->description();
+    my $threshold = $msgcondition->threshold();
+    my $outtext = $msgcondition->generated_message_text();
+    my $severity = $msgcondition->generated_message_severity();
+    print "\t"x$indent;
+    print "$description\t$match_text\t$outtext\t$severity\n";
+  }
+}
+
 
 
 ######################################################################
@@ -204,8 +230,11 @@ sub store {
     push(@{$self->{'members'}->{$member_type}},$answer);
     return;
   }
+  print STDERR "Don't really know what to do with $keyword = $answer, so fudging it.\n";
   $self->{'attributes'}->{$keyword} = $answer;
 }
+
+#my @possible_members = qw{ECS LOGFILE MONITOR OPCMSG SCHEDULE SNMP TEMPLATE_GROUP};
 
 sub members {
   my $self = shift;
@@ -217,15 +246,18 @@ sub members {
       push(@answer,[$template_type,$template_name]);
     }
   }
+  return @answer;
 }
 
 sub new {
   my $class = shift;
   my $name = shift;
+  my $parent = shift;
   my $self = {};
   $self->{'name'} = $name;
   $self->{'attributes'} = {};
   $self->{'members'} = {};
+  $self->{'parent'} = $parent;
   bless $self,$class;
   return $self;
 }
@@ -238,6 +270,34 @@ sub set_description {
 
 sub kind { return 'TEMPLATE_GROUP'; }
 
+
+sub csvformat {
+  my $self = shift;
+  my $indent = shift || 0;
+  my $template_type;
+  my $template_name;
+  my $template;
+  my $subtemplate;
+  my $parent = $self->{"parent"};
+  print "\t"x$indent;
+  print " -- TEMPLATE GROUP ".$self->{"name"}."\n";
+  foreach $template_type (keys %{$self->{'members'}}) {
+    next if $template_type eq 'TEMPLATE_GROUP'; # do them last
+    foreach $template_name (@{$self->{'members'}->{$template_type}}) {
+      $subtemplate = $parent->get_template($template_type,$template_name);
+      print "\t"x($index+1);
+      print " $template_type template $template_name\n";
+      $subtemplate->csvformat($indent+1);
+    }
+  }
+  if (exists $self->{'members'}->{'TEMPLATE_GROUP'}) {
+    foreach $template_name (@{$self->{'members'}->{'TEMPLATE_GROUP'}}) {
+      $subtemplate = $parent->get_template('TEMPLATE_GROUP',$template_name);
+      $subtemplate->csvformat($indent+1);
+    }
+  }
+}
+
 ######################################################################
 
 package OpcConfig::Template::ECSTemplate;
@@ -248,8 +308,10 @@ package OpcConfig::Template::ECSTemplate;
 sub new {
   my $class = shift;
   my $name = shift;
+  my $parent = shift;
   my $self = {};
   $self->{'name'} = $name;
+  $self->{'parent'} = $parent;
   bless $self,$class;
 }
 
@@ -264,8 +326,10 @@ use base 'OpcConfig::Template';
 sub new {
   my $class = shift;
   my $name = shift;
+  my $parent = shift;
   my $self = {};
   $self->{'name'} = $name;
+  $self->{'parent'} = $parent;
   bless $self,$class;
   $self->standard_initialisation();
   $self->{'current trigger'} = undef;
@@ -304,8 +368,10 @@ use base 'OpcConfig::Template';
 sub new {
   my $class = shift;
   my $name = shift;
+  my $parent = shift;
   my $self = {};
   $self->{'name'} = $name;
+  $self->{'parent'} = $parent;
   bless $self,$class;
   $self->standard_initialisation();
   return $self;
@@ -338,9 +404,12 @@ sub kind { return 'SNMP'; }
 
 sub csvformat {
   my $self = shift;
+  my $indent = shift || 0;
+  print "\t" x $indent;
   print "SNMP Trap Oid\tAlarm Text\tSeverity\tHelp Text\n";
   my $msgcondition;
   foreach $msgcondition (@{$self->{'conditions'}}) {
+    print "\t" x $indent;
     print $msgcondition->snmpv2oid();
     print "\t";
     my $severity = $msgcondition->generated_message_severity();
