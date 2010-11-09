@@ -100,7 +100,9 @@ sub severity {
   return "Suppress" if $self->{"category"} =~ /LOGONLY/;
   return $self->{"severity"};
 }
+sub category { my $self = shift; return $self->{"category"}; }
 sub forwarding { my $self = shift; return $self->{"forwarding"}; }
+sub alarm_format { my $self = shift; return $self->{"format"}; }
 
 package TrapdConfig;
 
