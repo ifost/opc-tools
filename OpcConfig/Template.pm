@@ -75,6 +75,37 @@ sub store {
 }
 
 
+
+=head2 $template->kind()
+
+Returns the kind of template. It can be one of:
+
+=over
+
+=item TEMPLATE_GROUP
+
+=item SNMP
+
+=item ...
+
+=back
+
+(virtual function)
+
+=cut
+
+
+=head2 $template->parent()
+
+Returns the OpcConfig object which this is a member of.
+
+=cut
+
+sub parent {
+  my $self = shift;
+  return $self->{'parent'};
+}
+
 use OpcConfig::Template::Condition;
 
 =head2 $template->add_condition($description)
@@ -231,14 +262,17 @@ sub csvformat {
   foreach $msgcondition ($self->conditions()) {
     my $description = $msgcondition->description();
     my $threshold = $msgcondition->threshold();
-    my $outtext = $msgcondition->generated_message_text();
     my $severity = $msgcondition->generated_message_severity();
-    die unless defined $description;
-    die unless defined $threshold;
-    $outtext = "(Default monitor message)" unless defined $outtext;
-    die unless defined $severity;
+    my $outtext = $msgcondition->generated_message_text();
     print "\t"x$indent;
-    print "$description\t$threshold\t$outtext\t$severity\n";
+    if (defined $severity) {
+      die unless defined $description;
+      die unless defined $threshold;
+      $outtext = "(Default monitor message)" unless defined $outtext;
+      print "$description\t$threshold\t$outtext\t$severity\n";
+    } else {
+      print "$description\t\t$outtext\t\n";
+    }
   }
 }
 
@@ -275,6 +309,38 @@ sub members {
   foreach $template_type (keys %{$self->{'members'}}) {
     foreach $template_name (@{$self->{'members'}->{$template_type}}) {
       push(@answer,[$template_type,$template_name]);
+    }
+  }
+  return @answer;
+}
+
+
+=head1 $template_group->recurse()
+
+Returns all templates inside this template group, expanding out template
+groups recursively.
+
+=cut
+
+sub recurse {
+  my $self = shift;
+  my @answer;
+  my @members = $self->members();
+  my $member;
+  my $template_name;
+  my $template_type;
+  my $template;
+  my $parent = $self->{'parent'};
+  print STDERR "Members are ".join(" ",@members)."\n";
+  foreach $member (@members) {
+    ($template_type,$template_name) = @$member;
+    my $template=$parent->get_template($template_type,$template_name);
+    print STDERR "EXAMINING $template_name\n";
+    if ($template_type eq 'TEMPLATE_GROUP') {
+      print STDERR "EXPANDING $template_name\n";
+      push(@answer,$template->recurse());
+    } else {
+      push(@answer,$template);
     }
   }
   return @answer;
@@ -388,6 +454,26 @@ sub store {
   } else {
     $self->{$keyword} = $answer;
   }
+}
+
+sub csvformat {
+  return;
+
+  # The follow code is completely broken.
+  # Instead of trying to fix it, we silently ignore schedule templates.
+  my $self = shift;
+  my $indent = shift || 0;
+  print "\t"x$indent;
+  print "Name\tProgram\n";
+  my $msgcondition;
+  foreach $msgcondition ($self->conditions()) {
+    my $description = $msgcondition->description();
+    my $program = $msgcondition->{"SCHEDPROG"};
+    print "$description\t$program\n";
+  }
+  # To do: this is not quite complete. It should print out the
+  # schedule of when things are going to be run, and what messages
+  # it generates when we do.
 }
 
 ######################################################################
