@@ -81,6 +81,8 @@ sub store {
 
 sub flowcontrol { return "Suppress"; }
 
+sub generated_message_text { return "(Message suppressed)"; }
+
 
 package OpcConfig::Template::Condition::SuppressUnlessCondition;
 use base 'OpcConfig::Template::Condition';
@@ -115,6 +117,8 @@ sub store {
 }
 
 sub flowcontrol { return "SuppressUnless"; }
+
+sub generated_message_text { return "(Following messages suppressed unless)"; }
 
 package OpcConfig::Template::Condition::MessageCondition;
 use base 'OpcConfig::Template::Condition';
