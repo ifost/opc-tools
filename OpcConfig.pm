@@ -249,7 +249,7 @@ sub print_brief_list {
 }
 
 
-=head2 $objconfig_obj->get_template($template_type,$template_name)
+=head2 $opcconfig_obj->get_template($template_type,$template_name)
 
 Returns one template.
 
@@ -261,6 +261,7 @@ sub get_template {
   my $template_name = shift;
   return $self->{$template_type}->{$template_name};
 }
+
 
 
 =head2 show_differences()
